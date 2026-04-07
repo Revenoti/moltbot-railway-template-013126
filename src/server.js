@@ -314,8 +314,13 @@ function isConfigured() {
 // ========== DEPRECATED MODEL MIGRATION ==========
 // Auto-migrate deprecated model references in config to their replacements on startup.
 // This prevents "Unknown model" errors when OpenClaw drops support for old model IDs.
+//
+// OPENAI_MODEL controls which OpenAI model deprecated Claude references are replaced with.
+// Defaults to "gpt-4o". Set the Railway environment variable to switch models without
+// touching code (e.g. OPENAI_MODEL=gpt-4-turbo).
+const OPENAI_MODEL = process.env.OPENAI_MODEL?.trim() || "gpt-4o";
 const DEPRECATED_MODELS = {
-  "claude-sonnet-4-5-20250929": "gpt-4o",
+  "claude-sonnet-4-5-20250929": OPENAI_MODEL,
 };
 
 (function migrateDeprecatedModels() {
