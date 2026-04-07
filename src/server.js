@@ -315,12 +315,20 @@ function isConfigured() {
 // Auto-migrate deprecated model references in config to their replacements on startup.
 // This prevents "Unknown model" errors when OpenClaw drops support for old model IDs.
 //
-// OPENAI_MODEL controls which OpenAI model deprecated Claude references are replaced with.
-// Defaults to "gpt-4o". Set the Railway environment variable to switch models without
-// touching code (e.g. OPENAI_MODEL=gpt-4-turbo).
-const OPENAI_MODEL = process.env.OPENAI_MODEL?.trim() || "gpt-4o";
+// LLM_PROVIDER and LLM_MODEL control which provider/model deprecated Claude references
+// are replaced with. The replacement value is formatted as "{LLM_PROVIDER}/{LLM_MODEL}".
+// Defaults to "openai/gpt-4o". Set Railway environment variables to switch LLMs without
+// touching code. Examples:
+//   LLM_PROVIDER=openai   LLM_MODEL=gpt-4o                          → openai/gpt-4o
+//   LLM_PROVIDER=kimi     LLM_MODEL=kimi-2.5                        → kimi/kimi-2.5
+//   LLM_PROVIDER=anthropic LLM_MODEL=claude-3-5-sonnet-20241022     → anthropic/claude-3-5-sonnet-20241022
+//   LLM_PROVIDER=google   LLM_MODEL=gemini-2.0-flash                → google/gemini-2.0-flash
+const LLM_PROVIDER = process.env.LLM_PROVIDER?.trim() || "openai";
+const LLM_MODEL = process.env.LLM_MODEL?.trim() || "gpt-4o";
+const LLM_TARGET = `${LLM_PROVIDER}/${LLM_MODEL}`;
+console.log(`[llm-config] Provider: ${LLM_PROVIDER}, Model: ${LLM_MODEL} → target: "${LLM_TARGET}"`);
 const DEPRECATED_MODELS = {
-  "claude-sonnet-4-5-20250929": OPENAI_MODEL,
+  "claude-sonnet-4-5-20250929": LLM_TARGET,
 };
 
 (function migrateDeprecatedModels() {
