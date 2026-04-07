@@ -311,6 +311,83 @@ function isConfigured() {
   }
 })();
 
+// ========== MODEL CONFIG MIGRATION ==========
+// Migrates deprecated model identifiers in openclaw.json to supported equivalents.
+// Called before every gateway start so upgrades are handled transparently.
+const DEPRECATED_MODELS = {
+  "claude-sonnet-4-5-20250929": "claude-3-5-sonnet-20241022",
+};
+
+async function migrateModelConfig() {
+  const cfgPath = configPath();
+
+  let raw;
+  try {
+    raw = fs.readFileSync(cfgPath, "utf8");
+  } catch (err) {
+    // Config doesn't exist yet — nothing to migrate.
+    debug(`[model-migration] Config file not found at ${cfgPath}, skipping migration`);
+    return;
+  }
+
+  let config;
+  try {
+    config = JSON.parse(raw);
+  } catch (err) {
+    console.warn(`[model-migration] Could not parse config JSON, skipping migration: ${err.message}`);
+    return;
+  }
+
+  // Walk every string value in the config tree and replace deprecated model names.
+  // This covers agent configs, model overrides, and any other nested location.
+  let migrated = false;
+
+  function walkAndReplace(obj) {
+    if (Array.isArray(obj)) {
+      for (let i = 0; i < obj.length; i++) {
+        if (typeof obj[i] === "string") {
+          const replacement = DEPRECATED_MODELS[obj[i]];
+          if (replacement) {
+            console.log(`[model-migration] Replacing deprecated model "${obj[i]}" → "${replacement}" (array index ${i})`);
+            obj[i] = replacement;
+            migrated = true;
+          }
+        } else if (obj[i] && typeof obj[i] === "object") {
+          walkAndReplace(obj[i]);
+        }
+      }
+    } else if (obj && typeof obj === "object") {
+      for (const key of Object.keys(obj)) {
+        if (typeof obj[key] === "string") {
+          const replacement = DEPRECATED_MODELS[obj[key]];
+          if (replacement) {
+            console.log(`[model-migration] Replacing deprecated model "${obj[key]}" → "${replacement}" (key: ${key})`);
+            obj[key] = replacement;
+            migrated = true;
+          }
+        } else if (obj[key] && typeof obj[key] === "object") {
+          walkAndReplace(obj[key]);
+        }
+      }
+    }
+  }
+
+  walkAndReplace(config);
+
+  if (!migrated) {
+    debug(`[model-migration] No deprecated models found in config, nothing to migrate`);
+    return;
+  }
+
+  try {
+    fs.writeFileSync(cfgPath, JSON.stringify(config, null, 2), { encoding: "utf8" });
+    console.log(`[model-migration] ✓ Config updated at ${cfgPath}`);
+  } catch (err) {
+    console.error(`[model-migration] Failed to write migrated config: ${err.message}`);
+    // Non-fatal — log and continue; the gateway will surface the model error itself.
+  }
+}
+
 let gatewayProc = null;
 let gatewayStarting = null;
 let gatewayHealthy = false;  // Track if gateway responded to health check
@@ -406,6 +483,10 @@ async function startGateway() {
   }
 
   console.log(`[gateway] ========== TOKEN SYNC COMPLETE ==========`);
+
+  // Migrate any deprecated model identifiers before the gateway starts.
+  // This handles breaking model removals across OpenClaw version upgrades automatically.
+  await migrateModelConfig();
 
   const args = [
     "gateway",
