@@ -384,6 +384,46 @@ const DEPRECATED_MODELS = {
   }
 })();
 
+// ========== PRIMARY MODEL SYNC ==========
+// Ensure agents.defaults.model.primary in the config always reflects the LLM_MODEL
+// environment variable. The config file may have a hardcoded model name (e.g. "gpt-4o")
+// that was baked in at setup time. This overwrites it on every startup so that changing
+// LLM_MODEL in Railway variables and redeploying is sufficient to switch models.
+(function syncPrimaryModel() {
+  const cfgPath = configPath();
+
+  try {
+    if (!fs.existsSync(cfgPath)) return;
+
+    const raw = fs.readFileSync(cfgPath, "utf8");
+    let config;
+    try {
+      config = JSON.parse(raw);
+    } catch {
+      return; // Malformed config — leave it alone, gateway will surface the error
+    }
+
+    // Navigate to agents.defaults.model, creating intermediate objects if absent.
+    config.agents ??= {};
+    config.agents.defaults ??= {};
+    config.agents.defaults.model ??= {};
+
+    const current = config.agents.defaults.model.primary;
+    if (current === LLM_MODEL) {
+      console.log(`[primary-model-sync] agents.defaults.model.primary already set to "${LLM_MODEL}", no update needed`);
+      return;
+    }
+
+    console.warn(`[primary-model-sync] Updating agents.defaults.model.primary: "${current ?? "(unset)"}" → "${LLM_MODEL}"`);
+    config.agents.defaults.model.primary = LLM_MODEL;
+
+    fs.writeFileSync(cfgPath, JSON.stringify(config, null, 2), "utf8");
+    console.warn(`[primary-model-sync] ✓ Config updated`);
+  } catch (err) {
+    console.error(`[primary-model-sync] Failed to sync primary model: ${err.message}`);
+  }
+})();
+
 let gatewayProc = null;
 let gatewayStarting = null;
 let gatewayHealthy = false;  // Track if gateway responded to health check
