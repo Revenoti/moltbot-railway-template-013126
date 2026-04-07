@@ -311,6 +311,66 @@ function isConfigured() {
   }
 })();
 
+// ========== DEPRECATED MODEL MIGRATION ==========
+// Auto-migrate deprecated model references in config to their replacements on startup.
+// This prevents "Unknown model" errors when OpenClaw drops support for old model IDs.
+const DEPRECATED_MODELS = {
+  "claude-sonnet-4-5-20250929": "gpt-4o",
+};
+
+(function migrateDeprecatedModels() {
+  const cfgPath = configPath();
+
+  try {
+    if (!fs.existsSync(cfgPath)) return;
+
+    const raw = fs.readFileSync(cfgPath, "utf8");
+    let config;
+    try {
+      config = JSON.parse(raw);
+    } catch {
+      return; // Malformed config — leave it alone, gateway will surface the error
+    }
+
+    let changed = false;
+
+    // Walk every string value in the config tree and replace deprecated model IDs.
+    function rewriteModels(obj) {
+      if (typeof obj === "string") {
+        const replacement = DEPRECATED_MODELS[obj];
+        if (replacement) {
+          changed = true;
+          console.warn(
+            `[model-migration] Replacing deprecated model "${obj}" → "${replacement}"`,
+          );
+          return replacement;
+        }
+        return obj;
+      }
+      if (Array.isArray(obj)) {
+        return obj.map(rewriteModels);
+      }
+      if (obj !== null && typeof obj === "object") {
+        const out = {};
+        for (const [k, v] of Object.entries(obj)) {
+          out[k] = rewriteModels(v);
+        }
+        return out;
+      }
+      return obj;
+    }
+
+    const updated = rewriteModels(config);
+
+    if (changed) {
+      fs.writeFileSync(cfgPath, JSON.stringify(updated, null, 2), "utf8");
+      console.warn(`[model-migration] ✓ Config updated with model replacements`);
+    }
+  } catch (err) {
+    console.error(`[model-migration] Failed to migrate deprecated models: ${err.message}`);
+  }
+})();
+
 let gatewayProc = null;
 let gatewayStarting = null;
 let gatewayHealthy = false;  // Track if gateway responded to health check
